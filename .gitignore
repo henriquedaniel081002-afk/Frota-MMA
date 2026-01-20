@@ -1,0 +1,9 @@
+(
+echo node_modules/
+echo .next/
+echo .env
+echo .env.local
+echo npm-debug.log*
+echo yarn-debug.log*
+echo yarn-error.log*
+) > .gitignore
