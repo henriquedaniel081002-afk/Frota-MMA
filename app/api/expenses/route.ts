@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Database } from "@/lib/database.types";
 
 const SQL_SETUP = `
 create table if not exists expenses (
@@ -19,6 +20,10 @@ create index if not exists expenses_fleet_code_truck_idx on expenses (fleet_code
 `;
 
 const CATEGORY_VALUES = new Set(["fuel", "maintenance"]);
+
+type ExpenseInsert = Database["public"]["Tables"]["expenses"]["Insert"];
+type ExpenseUpdate = Database["public"]["Tables"]["expenses"]["Update"];
+type MinMaxRow = Pick<Database["public"]["Tables"]["expenses"]["Row"], "date">;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ error: message, sqlSetup: SQL_SETUP }, { status });
@@ -64,7 +69,6 @@ function addMonthsUtc(date: Date, months: number) {
 
 function buildMonthSeries(startMonth: string, endMonth: string) {
   const start = toMonthStartUtc(startMonth);
-  const end = toMonthStartUtc(endMonth);
   const out: string[] = [];
 
   let cur = start;
@@ -78,6 +82,8 @@ function buildMonthSeries(startMonth: string, endMonth: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const { searchParams } = new URL(request.url);
   const fleetCode = searchParams.get("fleetCode");
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
@@ -85,19 +91,15 @@ export async function GET(request: NextRequest) {
   const group = searchParams.get("group");
   const truck = searchParams.get("truck");
 
-  // =========================
-  // EVOLUÇÃO MENSAL (group=month)
-  // =========================
   if (group === "month") {
-    // Buscar MIN e MAX date (para incluir TODOS os meses existentes, inclusive meses futuros)
-    let minQ = supabaseAdmin
+    let minQBase = supabaseAdmin
       .from("expenses")
       .select("date")
       .eq("fleet_code", fleetCode)
       .order("date", { ascending: true })
       .limit(1);
 
-    let maxQ = supabaseAdmin
+    let maxQBase = supabaseAdmin
       .from("expenses")
       .select("date")
       .eq("fleet_code", fleetCode)
@@ -105,17 +107,20 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (truck && truck !== "Todos") {
-      minQ = minQ.eq("truck_plate", truck);
-      maxQ = maxQ.eq("truck_plate", truck);
+      minQBase = minQBase.eq("truck_plate", truck);
+      maxQBase = maxQBase.eq("truck_plate", truck);
     }
+
+    const minQ = minQBase.returns<MinMaxRow[]>();
+    const maxQ = maxQBase.returns<MinMaxRow[]>();
 
     const [minRes, maxRes] = await Promise.all([minQ, maxQ]);
 
     if (minRes.error) return errorResponse(minRes.error.message, 500);
     if (maxRes.error) return errorResponse(maxRes.error.message, 500);
 
-    const minDate = minRes.data?.[0]?.date as string | undefined;
-    const maxDate = maxRes.data?.[0]?.date as string | undefined;
+    const minDate = minRes.data?.[0]?.date;
+    const maxDate = maxRes.data?.[0]?.date;
 
     if (!minDate || !maxDate) {
       return NextResponse.json({ data: [], sqlSetup: SQL_SETUP });
@@ -124,11 +129,12 @@ export async function GET(request: NextRequest) {
     const firstMonth = monthKey(minDate);
     const lastMonth = monthKey(maxDate);
 
-    // Série completa (preenche meses sem gasto com 0)
     const months = buildMonthSeries(firstMonth, lastMonth);
 
     const startDate = `${firstMonth}-01`;
-    const endExclusive = addMonthsUtc(toMonthStartUtc(lastMonth), 1).toISOString().slice(0, 10);
+    const endExclusive = addMonthsUtc(toMonthStartUtc(lastMonth), 1)
+      .toISOString()
+      .slice(0, 10);
 
     let dataQuery = supabaseAdmin
       .from("expenses")
@@ -151,10 +157,7 @@ export async function GET(request: NextRequest) {
       totalsMap.set(key, (totalsMap.get(key) || 0) + (Number.isFinite(amount) ? amount : 0));
     });
 
-    const series = months.map((m) => ({
-      month: m,
-      total: totalsMap.get(m) || 0,
-    }));
+    const series = months.map((m) => ({ month: m, total: totalsMap.get(m) || 0 }));
 
     return NextResponse.json({
       data: series,
@@ -163,9 +166,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // =========================
-  // LISTA DE LANÇAMENTOS (padrão)
-  // =========================
   let query = supabaseAdmin
     .from("expenses")
     .select("*")
@@ -191,6 +191,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const body = await request.json();
   const { fleetCode, date, truckPlate, category, amount, note } = body ?? {};
 
@@ -200,16 +202,18 @@ export async function POST(request: NextRequest) {
   if (!CATEGORY_VALUES.has(category)) return errorResponse("category inválida");
   if (Number(amount) <= 0) return errorResponse("amount deve ser maior que zero");
 
+  const insertPayload: ExpenseInsert = {
+    fleet_code: fleetCode,
+    date,
+    truck_plate: truckPlate,
+    category,
+    amount,
+    note: note || null,
+  };
+
   const { data, error } = await supabaseAdmin
     .from("expenses")
-    .insert({
-      fleet_code: fleetCode,
-      date,
-      truck_plate: truckPlate,
-      category,
-      amount,
-      note: note || null,
-    })
+    .insert(insertPayload)
     .select("*")
     .single();
 
@@ -219,6 +223,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const body = await request.json();
   const { id, fleetCode, date, truckPlate, category, amount, note } = body ?? {};
 
@@ -229,15 +235,17 @@ export async function PUT(request: NextRequest) {
   if (!CATEGORY_VALUES.has(category)) return errorResponse("category inválida");
   if (Number(amount) <= 0) return errorResponse("amount deve ser maior que zero");
 
+  const updatePayload: ExpenseUpdate = {
+    date,
+    truck_plate: truckPlate,
+    category,
+    amount,
+    note: note || null,
+  };
+
   const { data, error } = await supabaseAdmin
     .from("expenses")
-    .update({
-      date,
-      truck_plate: truckPlate,
-      category,
-      amount,
-      note: note || null,
-    })
+    .update(updatePayload)
     .eq("id", id)
     .eq("fleet_code", fleetCode)
     .select("*")
@@ -249,13 +257,20 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const body = await request.json();
   const { id, fleetCode } = body ?? {};
 
   if (!id) return errorResponse("id é obrigatório");
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
 
-  const { error } = await supabaseAdmin.from("expenses").delete().eq("id", id).eq("fleet_code", fleetCode);
+  const { error } = await supabaseAdmin
+    .from("expenses")
+    .delete()
+    .eq("id", id)
+    .eq("fleet_code", fleetCode);
+
   if (error) return errorResponse(error.message, 500);
 
   return NextResponse.json({ success: true, sqlSetup: SQL_SETUP });
