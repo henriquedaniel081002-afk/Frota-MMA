@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Controle de Gastos da Frota",
+  title: "Controle de Frota - MMA",
   description: "App para controle de custos por caminhão",
 };
 

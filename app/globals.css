@@ -1,13 +1,18 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --bg: #f5f6fa;
-  --card: #ffffff;
-  --text: #1f2430;
-  --muted: #6b7280;
-  --primary: #2563eb;
-  --danger: #dc2626;
-  --border: #e5e7eb;
+
+  /* Paleta: preto/cinza + branco + laranja */
+  --bg: #0b0d10;
+  --card: #12151b;
+  --text: #ffffff;
+  --muted: #a3a3a3;
+  --primary: #f97316;
+  --primary-strong: #fb923c;
+  --danger: #ef4444;
+  --border: #262b33;
+  --input: #0f1217;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -20,6 +25,10 @@ body {
   color: var(--text);
 }
 
+a {
+  color: inherit;
+}
+
 main {
   max-width: 1200px;
   margin: 0 auto;
@@ -28,7 +37,44 @@ main {
 
 h1 {
   font-size: 28px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
+}
+
+h3 {
+  margin: 0 0 12px 0;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.tabs {
+  display: inline-flex;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.tab {
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 700;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+
+.tab.active {
+  background: rgba(249, 115, 22, 0.14);
+  color: var(--text);
+  border-color: rgba(249, 115, 22, 0.3);
 }
 
 .toolbar {
@@ -40,6 +86,7 @@ h1 {
   padding: 16px;
   border-radius: 12px;
   border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 
 .field {
@@ -49,6 +96,11 @@ h1 {
   min-width: 160px;
 }
 
+label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 input,
 select,
 textarea {
@@ -56,6 +108,27 @@ textarea {
   border-radius: 8px;
   border: 1px solid var(--border);
   font-size: 14px;
+  background: var(--input);
+  color: var(--text);
+}
+
+/* Recharts (eixos, labels e tooltip) */
+.recharts-cartesian-axis-tick-value,
+.recharts-text,
+.recharts-legend-item-text {
+  fill: var(--muted);
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #0b0d10 !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 10px !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280;
 }
 
 textarea {
@@ -68,11 +141,17 @@ button {
   padding: 10px 14px;
   font-weight: 600;
   cursor: pointer;
+  background: var(--card);
+  color: var(--text);
 }
 
 button.primary {
   background: var(--primary);
-  color: #fff;
+  color: #0b0d10;
+}
+
+button.primary:hover {
+  background: var(--primary-strong);
 }
 
 button.ghost {
@@ -80,9 +159,13 @@ button.ghost {
   border: 1px solid var(--border);
 }
 
+button.ghost:hover {
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
 button.danger {
   background: var(--danger);
-  color: #fff;
+  color: #0b0d10;
 }
 
 .cards {
@@ -97,6 +180,7 @@ button.danger {
   border-radius: 12px;
   padding: 16px;
   border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 
 .card span {
@@ -122,6 +206,7 @@ button.danger {
   border: 1px solid var(--border);
   padding: 16px;
   overflow-x: auto;
+  box-shadow: var(--shadow);
 }
 
 .table-wrapper table {
@@ -145,7 +230,7 @@ button.danger {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -158,6 +243,7 @@ button.danger {
   padding: 20px;
   width: min(520px, 95vw);
   border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 
 .modal h2 {
@@ -182,6 +268,7 @@ button.danger {
   border-radius: 12px;
   padding: 16px;
   border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 
 @media (max-width: 720px) {
@@ -191,6 +278,10 @@ button.danger {
 
   .toolbar {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header {
     align-items: stretch;
   }
 }
