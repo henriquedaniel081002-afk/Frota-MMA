@@ -79,9 +79,9 @@ export default function Page() {
     setError(null);
     try {
       const params = new URLSearchParams({
-        fleetCode,
-        month: monthFilter,
-      });
+  ...(fleetCode ? { fleetCode } : {}),
+  month: monthFilter,
+});
       if (truckFilter && truckFilter !== "Todos") {
         params.set("truck", truckFilter);
       }
