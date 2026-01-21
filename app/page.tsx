@@ -579,17 +579,28 @@ export default function Page() {
                     <td>{expense.truck_plate}</td>
                     <td>{expense.category === "fuel" ? "Combustível" : "Manutenção"}</td>
                     <td>{currency.format(Number(expense.amount))}</td>
-                    <td>{expense.note || "-"}</td>
-                    <td>
-                      <div className="table-actions">
-                        <button className="ghost" onClick={() => openEditForm(expense)}>
-                          Editar
-                        </button>
-                        <button className="danger" onClick={() => handleDelete(expense.id)}>
-                          Excluir
-                        </button>
-                      </div>
-                    </td>
+
+<td>
+  {expense.liters !== null && expense.liters !== undefined
+    ? formatLiters(expense.liters)
+    : "-"}
+</td>
+
+<td>{expense.invoice_number || "-"}</td>
+
+<td>{expense.note || "-"}</td>
+
+<td>
+  <div className="table-actions">
+    <button className="ghost" onClick={() => openEditForm(expense)}>
+      Editar
+    </button>
+    <button className="danger" onClick={() => handleDelete(expense.id)}>
+      Excluir
+    </button>
+  </div>
+</td>
+
                   </tr>
                 ))}
               </tbody>
