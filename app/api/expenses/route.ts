@@ -10,9 +10,14 @@ create table if not exists expenses (
   truck_plate text not null,
   category text not null check (category in ('fuel', 'maintenance')),
   amount numeric not null check (amount > 0),
+  liters numeric,
+  invoice_number text,
   note text,
   created_at timestamptz not null default now()
 );
+
+alter table if exists expenses add column if not exists liters numeric;
+alter table if exists expenses add column if not exists invoice_number text;
 
 create index if not exists expenses_fleet_code_idx on expenses (fleet_code);
 create index if not exists expenses_fleet_code_date_idx on expenses (fleet_code, date);
@@ -194,7 +199,7 @@ export async function POST(request: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin();
 
   const body = await request.json();
-  const { fleetCode, date, truckPlate, category, amount, note } = body ?? {};
+  const { fleetCode, date, truckPlate, category, amount, liters, invoiceNumber, note } = body ?? {};
 
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
   if (!isValidDate(date)) return errorResponse("date inválida");
@@ -202,12 +207,23 @@ export async function POST(request: NextRequest) {
   if (!CATEGORY_VALUES.has(category)) return errorResponse("category inválida");
   if (Number(amount) <= 0) return errorResponse("amount deve ser maior que zero");
 
+  const litersValue =
+    liters === undefined || liters === null || liters === "" ? null : Number(String(liters).replace(",", "."));
+
+  if (litersValue !== null && (!Number.isFinite(litersValue) || litersValue <= 0)) {
+    return errorResponse("liters deve ser maior que zero");
+  }
+
+  const invoiceNumberValue = invoiceNumber ? String(invoiceNumber).trim() : null;
+
   const insertPayload: ExpenseInsert = {
     fleet_code: fleetCode,
     date,
     truck_plate: truckPlate,
     category,
     amount,
+    liters: category === "fuel" ? litersValue : null,
+    invoice_number: invoiceNumberValue,
     note: note || null,
   };
 
@@ -226,7 +242,7 @@ export async function PUT(request: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin();
 
   const body = await request.json();
-  const { id, fleetCode, date, truckPlate, category, amount, note } = body ?? {};
+  const { id, fleetCode, date, truckPlate, category, amount, liters, invoiceNumber, note } = body ?? {};
 
   if (!id) return errorResponse("id é obrigatório");
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
@@ -235,11 +251,22 @@ export async function PUT(request: NextRequest) {
   if (!CATEGORY_VALUES.has(category)) return errorResponse("category inválida");
   if (Number(amount) <= 0) return errorResponse("amount deve ser maior que zero");
 
+  const litersValue =
+    liters === undefined || liters === null || liters === "" ? null : Number(String(liters).replace(",", "."));
+
+  if (litersValue !== null && (!Number.isFinite(litersValue) || litersValue <= 0)) {
+    return errorResponse("liters deve ser maior que zero");
+  }
+
+  const invoiceNumberValue = invoiceNumber ? String(invoiceNumber).trim() : null;
+
   const updatePayload: ExpenseUpdate = {
     date,
     truck_plate: truckPlate,
     category,
     amount,
+    liters: category === "fuel" ? litersValue : null,
+    invoice_number: invoiceNumberValue,
     note: note || null,
   };
 

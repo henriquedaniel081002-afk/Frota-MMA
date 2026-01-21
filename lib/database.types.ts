@@ -9,6 +9,8 @@ export type Database = {
           truck_plate: string;
           category: "fuel" | "maintenance";
           amount: number;
+          liters: number | null;
+          invoice_number: string | null;
           note: string | null;
           created_at: string;
         };
@@ -19,6 +21,8 @@ export type Database = {
           truck_plate: string;
           category: "fuel" | "maintenance";
           amount: number;
+          liters?: number | null;
+          invoice_number?: string | null;
           note?: string | null;
           created_at?: string;
         };
@@ -29,6 +33,8 @@ export type Database = {
           truck_plate?: string;
           category?: "fuel" | "maintenance";
           amount?: number;
+          liters?: number | null;
+          invoice_number?: string | null;
           note?: string | null;
           created_at?: string;
         };

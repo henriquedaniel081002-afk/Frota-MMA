@@ -22,6 +22,8 @@ type Expense = {
   truck_plate: string;
   category: "fuel" | "maintenance";
   amount: number;
+  liters: number | null;
+  invoice_number: string | null;
   note: string | null;
   created_at: string;
 };
@@ -32,6 +34,8 @@ type FormState = {
   truckPlate: string;
   category: "fuel" | "maintenance";
   amount: string;
+  liters: string;
+  invoiceNumber: string;
   note: string;
 };
 
@@ -39,6 +43,14 @@ const currency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
 });
+
+
+function formatLiters(value: number | null) {
+  if (value === null || value === undefined) return "-";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  return num.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
 
 function monthFromDate(date = new Date()) {
   return date.toISOString().slice(0, 7);
@@ -114,6 +126,8 @@ export default function Page() {
     truckPlate: "",
     category: "fuel",
     amount: "",
+    liters: "",
+    invoiceNumber: "",
     note: "",
   });
 
@@ -219,6 +233,8 @@ export default function Page() {
       truckPlate: "",
       category: "fuel",
       amount: "",
+    liters: "",
+    invoiceNumber: "",
       note: "",
     });
     setIsFormOpen(true);
@@ -231,6 +247,8 @@ export default function Page() {
       truckPlate: expense.truck_plate,
       category: expense.category,
       amount: expense.amount.toString(),
+      liters: expense.liters?.toString() ?? "",
+      invoiceNumber: expense.invoice_number ?? "",
       note: expense.note ?? "",
     });
     setIsFormOpen(true);
@@ -246,6 +264,8 @@ export default function Page() {
       truckPlate: formState.truckPlate.trim(),
       category: formState.category,
       amount: Number(formState.amount.replace(",", ".")),
+      liters: formState.liters ? Number(formState.liters.replace(",", ".")) : null,
+      invoiceNumber: formState.invoiceNumber.trim(),
       note: formState.note.trim(),
     };
 
@@ -546,6 +566,8 @@ export default function Page() {
                   <th>Placa</th>
                   <th>Tipo</th>
                   <th>Valor</th>
+                  <th>Litros</th>
+                  <th>Nota fiscal</th>
                   <th>Observação</th>
                   <th>Ações</th>
                 </tr>
@@ -633,9 +655,14 @@ export default function Page() {
               <label>Categoria</label>
               <select
                 value={formState.category}
-                onChange={(event) =>
-                  setFormState((prev) => ({ ...prev, category: event.target.value as FormState["category"] }))
-                }
+                onChange={(event) => {
+                  const nextCategory = event.target.value as FormState["category"];
+                  setFormState((prev) => ({
+                    ...prev,
+                    category: nextCategory,
+                    liters: nextCategory === "fuel" ? prev.liters : "",
+                  }));
+                }}
               >
                 <option value="fuel">Combustível</option>
                 <option value="maintenance">Manutenção</option>
@@ -651,6 +678,28 @@ export default function Page() {
               />
             </div>
 
+
+            <div className="field">
+              <label>Litros</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={formState.liters}
+                onChange={(event) => setFormState((prev) => ({ ...prev, liters: event.target.value }))}
+                placeholder="0,00"
+                disabled={formState.category !== "fuel"}
+              />
+            </div>
+
+            <div className="field">
+              <label>Nota fiscal</label>
+              <input
+                value={formState.invoiceNumber}
+                onChange={(event) => setFormState((prev) => ({ ...prev, invoiceNumber: event.target.value }))}
+                placeholder="Ex: 12345"
+              />
+            </div>
             <div className="field">
               <label>Observação</label>
               <textarea
