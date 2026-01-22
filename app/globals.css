@@ -2,7 +2,6 @@
   color-scheme: dark;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
 
-  /* Paleta: preto + branco + laranja (tema escuro) */
   --bg: #0b0d10;
   --bg-2: #07080a;
   --card: #12151b;
@@ -334,16 +333,6 @@ tbody tr:hover td {
 }
 
 /* Modal */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -481,7 +470,7 @@ tbody tr:hover td {
   text-overflow: ellipsis;
 }
 
-/* Recharts (eixos, labels e tooltip) */
+/* Recharts */
 .recharts-cartesian-axis-tick-value,
 .recharts-text,
 .recharts-legend-item-text {
@@ -494,6 +483,14 @@ tbody tr:hover td {
   color: var(--text) !important;
   border-radius: 12px !important;
   box-shadow: var(--shadow-soft) !important;
+}
+
+/* ===== MOBILE LANÇAMENTOS (cards) ===== */
+.desktop-only {
+  display: block;
+}
+.mobile-only {
+  display: none;
 }
 
 @media (max-width: 720px) {
@@ -513,5 +510,99 @@ tbody tr:hover td {
 
   .header-actions {
     justify-content: space-between;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+  .mobile-only {
+    display: block;
+  }
+
+  .mobile-list {
+    padding: 12px;
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-item {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    background: rgba(15, 18, 23, 0.55);
+    padding: 12px;
+  }
+
+  .mobile-item-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+
+  .mobile-item-title {
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    font-size: 16px;
+  }
+
+  .mobile-item-sub {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  .mobile-item-value {
+    font-weight: 900;
+    color: var(--primary);
+    white-space: nowrap;
+  }
+
+  .mobile-item-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .mobile-kv {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 8px;
+    background: rgba(18, 21, 27, 0.45);
+  }
+
+  .mobile-kv span {
+    display: block;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .mobile-kv strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  .mobile-note {
+    border-left: 3px solid rgba(249, 115, 22, 0.7);
+    padding-left: 10px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 13px;
+    margin: 10px 0;
+  }
+
+  .mobile-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .mobile-btn {
+    width: 100%;
+    padding: 12px 12px;
+    border-radius: 12px;
   }
 }

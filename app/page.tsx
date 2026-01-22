@@ -150,6 +150,10 @@ type MonthlyPoint = {
   maintenance: number;
 };
 
+function normalizePlate(input: string) {
+  return input.toUpperCase().replace(/\s+/g, "").trim();
+}
+
 export default function Page() {
   const [fleetCode, setFleetCode] = useState<string | null>(null);
   const [fleetCodeInput, setFleetCodeInput] = useState("");
@@ -192,12 +196,14 @@ export default function Page() {
     }
   }, []);
 
+  // Lista principal (respeita filtro por mês)
   useEffect(() => {
     if (!fleetCode) return;
     loadExpenses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fleetCode, monthMode, selectedMonth]);
 
+  // Série mensal (sempre carrega modo ALL; depende apenas do fleetCode)
   useEffect(() => {
     if (!fleetCode) return;
     loadMonthlySeries();
@@ -270,11 +276,39 @@ export default function Page() {
     setIsFleetModalOpen(false);
   }
 
+  // Placas (geral) para sugerir no input do formulário
+  const allPlates = useMemo(() => {
+    const unique = new Set<string>();
+    for (const item of seriesExpenses) unique.add(item.truck_plate);
+    for (const item of expenses) unique.add(item.truck_plate);
+    return Array.from(unique).sort();
+  }, [seriesExpenses, expenses]);
+
+  const lastPlate = useMemo(() => {
+    if (!seriesExpenses || seriesExpenses.length === 0) return "";
+    // tenta achar a última placa pelo maior date; fallback: primeiro da lista ordenada
+    let best: Expense | null = null;
+    for (const e of seriesExpenses) {
+      if (!best) {
+        best = e;
+        continue;
+      }
+      if (String(e.date) > String(best.date)) best = e;
+    }
+    return best?.truck_plate ?? "";
+  }, [seriesExpenses]);
+
   function openNewForm() {
     setError(null);
+
+    const suggested =
+      truckFilter !== "Todos"
+        ? truckFilter
+        : lastPlate || (allPlates.length > 0 ? allPlates[0] : "");
+
     setFormState({
       date: new Date().toISOString().slice(0, 10),
-      truckPlate: "",
+      truckPlate: suggested,
       km: "",
       category: "fuel",
       amount: "",
@@ -304,6 +338,12 @@ export default function Page() {
   async function handleSave() {
     if (!fleetCode) return;
 
+    const plateNormalized = normalizePlate(formState.truckPlate);
+    if (!plateNormalized) {
+      setError("Placa é obrigatória");
+      return;
+    }
+
     const kmValue = formState.km ? Number(formState.km.replace(",", ".")) : NaN;
     if (!Number.isFinite(kmValue) || kmValue < 0) {
       setError("KM deve ser um número maior ou igual a zero");
@@ -331,7 +371,7 @@ export default function Page() {
       id: formState.id,
       fleetCode,
       date: formState.date,
-      truckPlate: formState.truckPlate.trim(),
+      truckPlate: plateNormalized,
       km: kmValue,
       category: formState.category,
       amount: amountValue,
@@ -376,7 +416,7 @@ export default function Page() {
     await Promise.all([loadExpenses(), loadMonthlySeries()]);
   }
 
-  const plates = useMemo(() => {
+  const platesInPeriod = useMemo(() => {
     const unique = new Set<string>();
     for (const item of expenses) unique.add(item.truck_plate);
     return Array.from(unique).sort();
@@ -521,7 +561,7 @@ export default function Page() {
               onChange={(e) => setTruckFilter(e.target.value)}
             >
               <option value="Todos">Todos</option>
-              {plates.map((p) => (
+              {platesInPeriod.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
@@ -709,69 +749,147 @@ export default function Page() {
             ) : expenses.length === 0 ? (
               <div className="empty-state">Nenhum lançamento encontrado.</div>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Data</th>
-                    <th>Placa</th>
-                    <th>KM</th>
-                    <th>Tipo</th>
-                    <th>Valor</th>
-                    <th>Litros</th>
-                    <th>Nota fiscal</th>
-                    <th>Observação</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Desktop */}
+                <div className="desktop-only">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Placa</th>
+                        <th>KM</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                        <th>Litros</th>
+                        <th>Nota fiscal</th>
+                        <th>Observação</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {expenses.map((expense) => (
+                        <tr key={expense.id}>
+                          <td>{expense.date}</td>
+                          <td>{expense.truck_plate}</td>
+                          <td>
+                            {Number.isFinite(Number(expense.km))
+                              ? Number(expense.km).toLocaleString("pt-BR", {
+                                  maximumFractionDigits: 0,
+                                })
+                              : "-"}
+                          </td>
+                          <td>
+                            {expense.category === "fuel"
+                              ? "Combustível"
+                              : "Manutenção"}
+                          </td>
+                          <td>{currency.format(Number(expense.amount))}</td>
+                          <td>
+                            {expense.liters !== null &&
+                            expense.liters !== undefined
+                              ? formatLiters(expense.liters)
+                              : "-"}
+                          </td>
+                          <td>{expense.invoice_number || "-"}</td>
+                          <td className="truncate">{expense.note || "-"}</td>
+                          <td>
+                            <div className="table-actions">
+                              <button
+                                className="ghost"
+                                onClick={() => openEditForm(expense)}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                className="danger"
+                                onClick={() => handleDelete(expense.id)}
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile (cards com botões fáceis de clicar) */}
+                <div className="mobile-only mobile-list">
                   {expenses.map((expense) => (
-                    <tr key={expense.id}>
-                      <td>{expense.date}</td>
-                      <td>{expense.truck_plate}</td>
-                      <td>
-                        {Number.isFinite(Number(expense.km))
-                          ? Number(expense.km).toLocaleString("pt-BR", {
-                              maximumFractionDigits: 0,
-                            })
-                          : "-"}
-                      </td>
-                      <td>
-                        {expense.category === "fuel"
-                          ? "Combustível"
-                          : "Manutenção"}
-                      </td>
-                      <td>{currency.format(Number(expense.amount))}</td>
-                      <td>
-                        {expense.liters !== null && expense.liters !== undefined
-                          ? formatLiters(expense.liters)
-                          : "-"}
-                      </td>
-                      <td>{expense.invoice_number || "-"}</td>
-                      <td className="truncate">{expense.note || "-"}</td>
-                      <td>
-                        <div className="table-actions">
-                          <button
-                            className="ghost"
-                            onClick={() => openEditForm(expense)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            className="danger"
-                            onClick={() => handleDelete(expense.id)}
-                          >
-                            Excluir
-                          </button>
+                    <div key={expense.id} className="mobile-item">
+                      <div className="mobile-item-head">
+                        <div>
+                          <div className="mobile-item-title">
+                            {expense.truck_plate}
+                          </div>
+                          <div className="mobile-item-sub">
+                            {expense.date} •{" "}
+                            {expense.category === "fuel"
+                              ? "Combustível"
+                              : "Manutenção"}
+                          </div>
                         </div>
-                      </td>
-                    </tr>
+                        <div className="mobile-item-value">
+                          {currency.format(Number(expense.amount))}
+                        </div>
+                      </div>
+
+                      <div className="mobile-item-grid">
+                        <div className="mobile-kv">
+                          <span>KM</span>
+                          <strong>
+                            {Number.isFinite(Number(expense.km))
+                              ? Number(expense.km).toLocaleString("pt-BR", {
+                                  maximumFractionDigits: 0,
+                                })
+                              : "-"}
+                          </strong>
+                        </div>
+
+                        <div className="mobile-kv">
+                          <span>Litros</span>
+                          <strong>
+                            {expense.liters !== null &&
+                            expense.liters !== undefined
+                              ? formatLiters(expense.liters)
+                              : "-"}
+                          </strong>
+                        </div>
+
+                        <div className="mobile-kv">
+                          <span>NF</span>
+                          <strong>{expense.invoice_number || "-"}</strong>
+                        </div>
+                      </div>
+
+                      {expense.note ? (
+                        <div className="mobile-note">{expense.note}</div>
+                      ) : null}
+
+                      <div className="mobile-actions">
+                        <button
+                          className="ghost mobile-btn"
+                          onClick={() => openEditForm(expense)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          className="danger mobile-btn"
+                          onClick={() => handleDelete(expense.id)}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </>
             )}
           </section>
         )}
 
+        {/* Modal: FleetCode */}
         {isFleetModalOpen && (
           <div className="modal-overlay">
             <div className="modal">
@@ -797,10 +915,18 @@ export default function Page() {
           </div>
         )}
 
+        {/* Modal: Form */}
         {isFormOpen && (
           <div className="modal-overlay">
             <div className="modal">
               <h2>{formState.id ? "Editar lançamento" : "Novo lançamento"}</h2>
+
+              {/* sugestões de placa */}
+              <datalist id="truck-plates">
+                {allPlates.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
 
               <div className="form-grid">
                 <div className="field">
@@ -815,16 +941,18 @@ export default function Page() {
                 </div>
 
                 <div className="field">
-                  <label>Placa</label>
+                  <label>Placa (sugere cadastradas)</label>
                   <input
+                    list="truck-plates"
                     value={formState.truckPlate}
                     onChange={(e) =>
                       setFormState((s) => ({
                         ...s,
-                        truckPlate: e.target.value,
+                        truckPlate: normalizePlate(e.target.value),
                       }))
                     }
                     placeholder="Ex: ABC1D23"
+                    autoComplete="off"
                   />
                 </div>
 
@@ -836,6 +964,7 @@ export default function Page() {
                       setFormState((s) => ({ ...s, km: e.target.value }))
                     }
                     placeholder="Ex: 120000"
+                    inputMode="numeric"
                   />
                 </div>
 
@@ -863,6 +992,7 @@ export default function Page() {
                       setFormState((s) => ({ ...s, amount: e.target.value }))
                     }
                     placeholder="Ex: 350,50"
+                    inputMode="decimal"
                   />
                 </div>
 
@@ -879,6 +1009,7 @@ export default function Page() {
                         : "(apenas combustível)"
                     }
                     disabled={formState.category !== "fuel"}
+                    inputMode="decimal"
                   />
                 </div>
 
