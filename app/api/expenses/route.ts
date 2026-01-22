@@ -8,6 +8,7 @@ create table if not exists expenses (
   fleet_code text not null,
   date date not null,
   truck_plate text not null,
+  km numeric not null default 0 check (km >= 0),
   category text not null check (category in ('fuel', 'maintenance')),
   amount numeric not null check (amount > 0),
   liters numeric,
@@ -19,9 +20,65 @@ create table if not exists expenses (
 alter table if exists expenses add column if not exists liters numeric;
 alter table if exists expenses add column if not exists invoice_number text;
 
+alter table if exists expenses add column if not exists km numeric;
+alter table if exists expenses alter column km set default 0;
+update expenses set km = 0 where km is null;
+alter table if exists expenses alter column km set not null;
+
 create index if not exists expenses_fleet_code_idx on expenses (fleet_code);
 create index if not exists expenses_fleet_code_date_idx on expenses (fleet_code, date);
 create index if not exists expenses_fleet_code_truck_idx on expenses (fleet_code, truck_plate);
+
+alter table if exists expenses enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'expenses' and policyname = 'select (authenticated)'
+  ) then
+    create policy "select (authenticated)" on expenses
+      for select
+      to authenticated
+      using (true);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'expenses' and policyname = 'insert (authenticated)'
+  ) then
+    create policy "insert (authenticated)" on expenses
+      for insert
+      to authenticated
+      with check (true);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'expenses' and policyname = 'update (authenticated)'
+  ) then
+    create policy "update (authenticated)" on expenses
+      for update
+      to authenticated
+      using (true)
+      with check (true);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'expenses' and policyname = 'delete (authenticated)'
+  ) then
+    create policy "delete (authenticated)" on expenses
+      for delete
+      to authenticated
+      using (true);
+  end if;
+end $$;
 `;
 
 const CATEGORY_VALUES = new Set(["fuel", "maintenance"]);
@@ -34,10 +91,9 @@ function errorResponse(message: string, status = 400) {
   return NextResponse.json({ error: message, sqlSetup: SQL_SETUP }, { status });
 }
 
-function isValidDate(value: string) {
-  if (!value) return false;
-  const date = new Date(value);
-  return !Number.isNaN(date.getTime());
+function isValidDate(dateString: any) {
+  if (typeof dateString !== "string") return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateString);
 }
 
 function normalizeMonthRange(month: string) {
@@ -69,141 +125,84 @@ function monthStrFromDateUtc(d: Date) {
 }
 
 function addMonthsUtc(date: Date, months: number) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
-}
-
-function buildMonthSeries(startMonth: string, endMonth: string) {
-  const start = toMonthStartUtc(startMonth);
-  const out: string[] = [];
-
-  let cur = start;
-  for (let i = 0; i < 600; i++) {
-    const key = monthStrFromDateUtc(cur);
-    out.push(key);
-    if (key === endMonth) break;
-    cur = addMonthsUtc(cur, 1);
-  }
-  return out;
+  const d = new Date(date.getTime());
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d;
 }
 
 export async function GET(request: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin();
+  const url = new URL(request.url);
 
-  const { searchParams } = new URL(request.url);
-  const fleetCode = searchParams.get("fleetCode");
+  const fleetCode = url.searchParams.get("fleetCode");
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
 
-  const group = searchParams.get("group");
-  const truck = searchParams.get("truck");
+  const month = url.searchParams.get("month");
+  const mode = url.searchParams.get("mode") || "ALL";
 
-  if (group === "month") {
-    let minQBase = supabaseAdmin
-      .from("expenses")
-      .select("date")
-      .eq("fleet_code", fleetCode)
-      .order("date", { ascending: true })
-      .limit(1);
+  const monthRange = month ? normalizeMonthRange(month) : null;
 
-    let maxQBase = supabaseAdmin
-      .from("expenses")
-      .select("date")
-      .eq("fleet_code", fleetCode)
-      .order("date", { ascending: false })
-      .limit(1);
-
-    if (truck && truck !== "Todos") {
-      minQBase = minQBase.eq("truck_plate", truck);
-      maxQBase = maxQBase.eq("truck_plate", truck);
-    }
-
-    const minQ = minQBase.returns<MinMaxRow[]>();
-    const maxQ = maxQBase.returns<MinMaxRow[]>();
-
-    const [minRes, maxRes] = await Promise.all([minQ, maxQ]);
-
-    if (minRes.error) return errorResponse(minRes.error.message, 500);
-    if (maxRes.error) return errorResponse(maxRes.error.message, 500);
-
-    const minDate = minRes.data?.[0]?.date;
-    const maxDate = maxRes.data?.[0]?.date;
-
-    if (!minDate || !maxDate) {
-      return NextResponse.json({ data: [], sqlSetup: SQL_SETUP });
-    }
-
-    const firstMonth = monthKey(minDate);
-    const lastMonth = monthKey(maxDate);
-
-    const months = buildMonthSeries(firstMonth, lastMonth);
-
-    const startDate = `${firstMonth}-01`;
-    const endExclusive = addMonthsUtc(toMonthStartUtc(lastMonth), 1)
-      .toISOString()
-      .slice(0, 10);
-
-    let dataQuery = supabaseAdmin
-      .from("expenses")
-      .select("date, amount, truck_plate")
-      .eq("fleet_code", fleetCode)
-      .gte("date", startDate)
-      .lt("date", endExclusive);
-
-    if (truck && truck !== "Todos") {
-      dataQuery = dataQuery.eq("truck_plate", truck);
-    }
-
-    const { data, error } = await dataQuery;
-    if (error) return errorResponse(error.message, 500);
-
-    const totalsMap = new Map<string, number>();
-    (data ?? []).forEach((row: any) => {
-      const key = monthKey(row.date);
-      const amount = Number(row.amount);
-      totalsMap.set(key, (totalsMap.get(key) || 0) + (Number.isFinite(amount) ? amount : 0));
-    });
-
-    const series = months.map((m) => ({ month: m, total: totalsMap.get(m) || 0 }));
-
-    return NextResponse.json({
-      data: series,
-      range: { start: startDate, end: endExclusive },
-      sqlSetup: SQL_SETUP,
-    });
-  }
-
-  let query = supabaseAdmin
+  const baseQuery = supabaseAdmin
     .from("expenses")
     .select("*")
-    .eq("fleet_code", fleetCode)
-    .order("date", { ascending: false })
-    .order("created_at", { ascending: false });
+    .eq("fleet_code", fleetCode);
 
-  const month = searchParams.get("month");
-  if (month) {
-    const range = normalizeMonthRange(month);
-    if (!range) return errorResponse("month inválido. Use YYYY-MM");
-    query = query.gte("date", range.start).lt("date", range.end);
+  const minQBase = supabaseAdmin.from("expenses").select("date").eq("fleet_code", fleetCode).order("date", { ascending: true }).limit(1);
+  const maxQBase = supabaseAdmin.from("expenses").select("date").eq("fleet_code", fleetCode).order("date", { ascending: false }).limit(1);
+
+  if (mode === "MONTH" && monthRange) {
+    baseQuery.gte("date", monthRange.start).lt("date", monthRange.end);
+    minQBase.gte("date", monthRange.start).lt("date", monthRange.end);
+    maxQBase.gte("date", monthRange.start).lt("date", monthRange.end);
   }
 
-  if (truck && truck !== "Todos") {
-    query = query.eq("truck_plate", truck);
+  const expensesQ = baseQuery.order("date", { ascending: false }).order("created_at", { ascending: false });
+  const minQ = minQBase.returns<MinMaxRow[]>();
+  const maxQ = maxQBase.returns<MinMaxRow[]>();
+
+  const [expensesRes, minRes, maxRes] = await Promise.all([expensesQ, minQ, maxQ]);
+
+  if (expensesRes.error) return errorResponse(expensesRes.error.message, 500);
+  if (minRes.error) return errorResponse(minRes.error.message, 500);
+  if (maxRes.error) return errorResponse(maxRes.error.message, 500);
+
+  const minDate = minRes.data?.[0]?.date;
+  const maxDate = maxRes.data?.[0]?.date;
+
+  if (!minDate || !maxDate) {
+    return NextResponse.json({ data: [], sqlSetup: SQL_SETUP });
   }
 
-  const { data, error } = await query;
-  if (error) return errorResponse(error.message, 500);
+  const startMonth = monthKey(minDate);
+  const endMonth = monthKey(maxDate);
 
-  return NextResponse.json({ data, sqlSetup: SQL_SETUP });
+  const months: string[] = [];
+  let cur = toMonthStartUtc(startMonth);
+  const end = toMonthStartUtc(endMonth);
+
+  while (cur.getTime() <= end.getTime()) {
+    months.push(monthStrFromDateUtc(cur));
+    cur = addMonthsUtc(cur, 1);
+  }
+
+  return NextResponse.json({ data: expensesRes.data || [], months, sqlSetup: SQL_SETUP });
 }
 
 export async function POST(request: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin();
 
   const body = await request.json();
-  const { fleetCode, date, truckPlate, category, amount, liters, invoiceNumber, note } = body ?? {};
+  const { fleetCode, date, truckPlate, km, category, amount, liters, invoiceNumber, note } = body ?? {};
 
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
   if (!isValidDate(date)) return errorResponse("date inválida");
   if (!truckPlate) return errorResponse("truck_plate é obrigatório");
+
+  const kmValue = km === undefined || km === null || km === "" ? null : Number(String(km).replace(",", "."));
+  if (kmValue === null || !Number.isFinite(kmValue) || kmValue < 0) {
+    return errorResponse("km deve ser um número maior ou igual a zero");
+  }
+
   if (!CATEGORY_VALUES.has(category)) return errorResponse("category inválida");
   if (Number(amount) <= 0) return errorResponse("amount deve ser maior que zero");
 
@@ -220,6 +219,7 @@ export async function POST(request: NextRequest) {
     fleet_code: fleetCode,
     date,
     truck_plate: truckPlate,
+    km: kmValue,
     category,
     amount,
     liters: category === "fuel" ? litersValue : null,
@@ -242,12 +242,18 @@ export async function PUT(request: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin();
 
   const body = await request.json();
-  const { id, fleetCode, date, truckPlate, category, amount, liters, invoiceNumber, note } = body ?? {};
+  const { id, fleetCode, date, truckPlate, km, category, amount, liters, invoiceNumber, note } = body ?? {};
 
   if (!id) return errorResponse("id é obrigatório");
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
   if (!isValidDate(date)) return errorResponse("date inválida");
   if (!truckPlate) return errorResponse("truck_plate é obrigatório");
+
+  const kmValue = km === undefined || km === null || km === "" ? null : Number(String(km).replace(",", "."));
+  if (kmValue === null || !Number.isFinite(kmValue) || kmValue < 0) {
+    return errorResponse("km deve ser um número maior ou igual a zero");
+  }
+
   if (!CATEGORY_VALUES.has(category)) return errorResponse("category inválida");
   if (Number(amount) <= 0) return errorResponse("amount deve ser maior que zero");
 
@@ -263,6 +269,7 @@ export async function PUT(request: NextRequest) {
   const updatePayload: ExpenseUpdate = {
     date,
     truck_plate: truckPlate,
+    km: kmValue,
     category,
     amount,
     liters: category === "fuel" ? litersValue : null,
@@ -292,13 +299,9 @@ export async function DELETE(request: NextRequest) {
   if (!id) return errorResponse("id é obrigatório");
   if (!fleetCode) return errorResponse("fleetCode é obrigatório");
 
-  const { error } = await supabaseAdmin
-    .from("expenses")
-    .delete()
-    .eq("id", id)
-    .eq("fleet_code", fleetCode);
+  const { error } = await supabaseAdmin.from("expenses").delete().eq("id", id).eq("fleet_code", fleetCode);
 
   if (error) return errorResponse(error.message, 500);
 
-  return NextResponse.json({ success: true, sqlSetup: SQL_SETUP });
+  return NextResponse.json({ ok: true, sqlSetup: SQL_SETUP });
 }

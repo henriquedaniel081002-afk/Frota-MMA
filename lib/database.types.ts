@@ -7,6 +7,7 @@ export type Database = {
           fleet_code: string;
           date: string; // Supabase retorna date como string (YYYY-MM-DD)
           truck_plate: string;
+          km: number;
           category: "fuel" | "maintenance";
           amount: number;
           liters: number | null;
@@ -19,6 +20,7 @@ export type Database = {
           fleet_code: string;
           date: string;
           truck_plate: string;
+          km: number;
           category: "fuel" | "maintenance";
           amount: number;
           liters?: number | null;
@@ -31,6 +33,7 @@ export type Database = {
           fleet_code?: string;
           date?: string;
           truck_plate?: string;
+          km?: number;
           category?: "fuel" | "maintenance";
           amount?: number;
           liters?: number | null;
