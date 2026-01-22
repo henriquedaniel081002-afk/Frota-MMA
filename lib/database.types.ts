@@ -5,7 +5,7 @@ export type Database = {
         Row: {
           id: string;
           fleet_code: string;
-          date: string; // Supabase retorna date como string (YYYY-MM-DD)
+          date: string; // YYYY-MM-DD
           truck_plate: string;
           km: number;
           category: "fuel" | "maintenance";
@@ -41,11 +41,12 @@ export type Database = {
           note?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
     };
-    Views: {};
-    Functions: {};
-    Enums: {};
-    CompositeTypes: {};
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 };
