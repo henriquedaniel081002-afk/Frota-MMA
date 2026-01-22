@@ -146,8 +146,6 @@ type MonthlyPoint = {
   month: string; // YYYY-MM
   label: string; // MM/YY
   total: number;
-  fuel: number;
-  maintenance: number;
 };
 
 function normalizePlate(input: string) {
@@ -163,7 +161,6 @@ export default function Page() {
 
   const [monthMode, setMonthMode] = useState<MonthFilterMode>("ALL");
   const [selectedMonth, setSelectedMonth] = useState<string>(monthFromDate());
-  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
 
   const [truckFilter, setTruckFilter] = useState<string>("Todos");
 
@@ -196,19 +193,19 @@ export default function Page() {
     }
   }, []);
 
+  // Série mensal (base para meses disponíveis) - SEMPRE carrega tudo
+  useEffect(() => {
+    if (!fleetCode) return;
+    loadMonthlySeries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fleetCode]);
+
   // Lista principal (respeita filtro por mês)
   useEffect(() => {
     if (!fleetCode) return;
     loadExpenses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fleetCode, monthMode, selectedMonth]);
-
-  // Série mensal (sempre carrega modo ALL; depende apenas do fleetCode)
-  useEffect(() => {
-    if (!fleetCode) return;
-    loadMonthlySeries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fleetCode]);
 
   async function loadExpenses() {
     if (!fleetCode) return;
@@ -228,16 +225,13 @@ export default function Page() {
       if (!response.ok) {
         setError(result.error || "Erro ao carregar lançamentos");
         setExpenses([]);
-        setAvailableMonths([]);
         return;
       }
 
       setExpenses(result.data || []);
-      setAvailableMonths(result.months || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
       setExpenses([]);
-      setAvailableMonths([]);
     } finally {
       setLoading(false);
     }
@@ -276,6 +270,28 @@ export default function Page() {
     setIsFleetModalOpen(false);
   }
 
+  // ===== MESES DISPONÍVEIS (sempre completo) =====
+  const monthsAll = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of seriesExpenses) {
+      const m = String(e.date).slice(0, 7);
+      if (m && m.length === 7) set.add(m);
+    }
+    // ordena ASC (01/26 -> 03/26), troque para DESC se preferir
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [seriesExpenses]);
+
+  // garante que selectedMonth sempre exista quando monthMode=MONTH
+  useEffect(() => {
+    if (monthMode !== "MONTH") return;
+    if (monthsAll.length === 0) return;
+
+    if (!monthsAll.includes(selectedMonth)) {
+      // pega o último (mais recente) por padrão
+      setSelectedMonth(monthsAll[monthsAll.length - 1]);
+    }
+  }, [monthMode, monthsAll, selectedMonth]);
+
   // Placas (geral) para sugerir no input do formulário
   const allPlates = useMemo(() => {
     const unique = new Set<string>();
@@ -286,7 +302,6 @@ export default function Page() {
 
   const lastPlate = useMemo(() => {
     if (!seriesExpenses || seriesExpenses.length === 0) return "";
-    // tenta achar a última placa pelo maior date; fallback: primeiro da lista ordenada
     let best: Expense | null = null;
     for (const e of seriesExpenses) {
       if (!best) {
@@ -455,6 +470,7 @@ export default function Page() {
     return rows.filter((r) => r.value > 0);
   }, [totals]);
 
+  // ===== SÉRIE MENSAL (APENAS TOTAL) =====
   const monthlySeries = useMemo<MonthlyPoint[]>(() => {
     const src =
       truckFilter === "Todos"
@@ -469,14 +485,9 @@ export default function Page() {
           month: key,
           label: formatMonthLabel(key),
           total: 0,
-          fuel: 0,
-          maintenance: 0,
         };
       }
-      const amount = Number(e.amount);
-      acc[key].total += amount;
-      if (e.category === "fuel") acc[key].fuel += amount;
-      else acc[key].maintenance += amount;
+      acc[key].total += Number(e.amount);
     }
 
     return Object.values(acc).sort((a, b) => a.month.localeCompare(b.month));
@@ -539,12 +550,12 @@ export default function Page() {
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
               >
-                {availableMonths.length === 0 ? (
+                {monthsAll.length === 0 ? (
                   <option value={selectedMonth}>
                     {formatMonthLabel(selectedMonth)}
                   </option>
                 ) : (
-                  availableMonths.map((m) => (
+                  monthsAll.map((m) => (
                     <option key={m} value={m}>
                       {formatMonthLabel(m)}
                     </option>
@@ -679,9 +690,7 @@ export default function Page() {
               <div className="chart-card full">
                 <div className="chart-head">
                   <h3>Evolução mensal</h3>
-                  <span className="chart-sub">
-                    Soma por mês (total / combustível / manutenção)
-                  </span>
+                  <span className="chart-sub">Soma por mês (total)</span>
                 </div>
 
                 {monthlyLoading ? (
@@ -700,32 +709,15 @@ export default function Page() {
                       <XAxis dataKey="label" tickMargin={8} />
                       <YAxis tickFormatter={formatCompactBRL} width={70} />
                       <Tooltip content={<DarkTooltip />} />
-                      <Legend verticalAlign="bottom" height={26} />
 
                       <Line
                         type="monotone"
                         dataKey="total"
                         name="Total"
                         stroke={CHART_COLORS[0]}
-                        strokeWidth={2.5}
+                        strokeWidth={2.6}
                         dot={false}
                         activeDot={{ r: 5 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="fuel"
-                        name="Combustível"
-                        stroke={CHART_COLORS[1]}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="maintenance"
-                        name="Manutenção"
-                        stroke={CHART_COLORS[4]}
-                        strokeWidth={2}
-                        dot={false}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -750,7 +742,6 @@ export default function Page() {
               <div className="empty-state">Nenhum lançamento encontrado.</div>
             ) : (
               <>
-                {/* Desktop */}
                 <div className="desktop-only">
                   <table>
                     <thead>
@@ -814,7 +805,6 @@ export default function Page() {
                   </table>
                 </div>
 
-                {/* Mobile (cards com botões fáceis de clicar) */}
                 <div className="mobile-only mobile-list">
                   {expenses.map((expense) => (
                     <div key={expense.id} className="mobile-item">
@@ -921,7 +911,6 @@ export default function Page() {
             <div className="modal">
               <h2>{formState.id ? "Editar lançamento" : "Novo lançamento"}</h2>
 
-              {/* sugestões de placa */}
               <datalist id="truck-plates">
                 {allPlates.map((p) => (
                   <option key={p} value={p} />
